@@ -16,7 +16,6 @@ from werkzeug.contrib.cache import (SimpleCache, NullCache, MemcachedCache,
 from flask import request, current_app
 from migrate.versioning.util import Memoize
 
-
 class Cache(object):
     """
     This class is used to control the cache objects.
@@ -33,6 +32,9 @@ class Cache(object):
             self.app = None
             
         self._memoized = []
+        self._cache_on = lambda: True
+        self._always_cache = []
+        self._never_cache = []
 
     def init_app(self, app):
         "This is used to initialize cache with your app object"
@@ -45,11 +47,29 @@ class Cache(object):
         app.config.setdefault('CACHE_OPTIONS', None)
         app.config.setdefault('CACHE_ARGS', None)
         app.config.setdefault('CACHE_TYPE', 'NullCache')
+        app.config.setdefault('CACHE_ALL', None)
 
         self.app = app
 
         self._set_cache()
-
+        
+        if app.config['CACHE_ALL']:
+            
+            @app.before_request()
+            def check_cache():
+                if self._cache_on():
+                    rv = self.cache.get(request.path)
+                    if rv:
+                        return rv
+                    
+            @app.after_request()
+            def should_cache(response):
+                if self._cache_on() \
+                and (request.path in self._always_cache \
+                     or request.path not in self._never_cache):
+                    self.cache.set(request.path, response)
+                return response
+            
     def _set_cache(self):
         if self.app.config['TESTING']:
             self.cache = NullCache()
@@ -85,6 +105,25 @@ class Cache(object):
                     threshold=self.app.config['CACHE_THRESHOLD']))
             
             self.cache = cache_obj(*cache_args, **cache_options)
+
+    def cache_on(self, f):
+        self._cache_on = f
+        
+    def always(self, f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if request.path not in self._always_cache:
+                self._always_cache.append(request.path)
+                
+            return f(*args, **kwargs)
+        
+    def never(self, f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if request.path not in self._never_cache:
+                self._never_cache.append(request.path)
+                
+            return f(*args, **kwargs)
 
     def get(self, *args, **kwargs):
         "Proxy function for internal cache object."
