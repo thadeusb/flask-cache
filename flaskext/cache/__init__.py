@@ -11,10 +11,12 @@
 from functools import wraps
 
 from werkzeug import import_string
-from werkzeug.contrib.cache import (SimpleCache, NullCache, MemcachedCache,
-                                    GAEMemcachedCache, FileSystemCache)
+from werkzeug.contrib.cache import BaseCache, NullCache
 from flask import request, current_app
-from migrate.versioning.util import Memoize
+
+
+#: Cache Object
+################
 
 class Cache(object):
     """
@@ -45,7 +47,7 @@ class Cache(object):
         app.config.setdefault('CACHE_MEMCACHED_SERVERS', None)
         app.config.setdefault('CACHE_DIR', None)
         app.config.setdefault('CACHE_OPTIONS', None)
-        app.config.setdefault('CACHE_ARGS', None)
+        app.config.setdefault('CACHE_ARGS', [])
         app.config.setdefault('CACHE_TYPE', 'NullCache')
         app.config.setdefault('CACHE_ALL', None)
 
@@ -76,35 +78,22 @@ class Cache(object):
         else:
             import_me = self.app.config['CACHE_TYPE']
             if '.' not in import_me:
-                import_me = 'werkzeug.contrib.cache.' + \
+                import_me = 'flaskext.cache.backends.' + \
                             import_me
             
             cache_obj = import_string(import_me)
-            cache_args = []
-            cache_options = {}
+            cache_args = self.app.config['CACHE_ARGS'][:]
+            cache_options = dict(default_timeout= \
+                                 self.app.config['CACHE_DEFAULT_TIMEOUT'])
             
             if self.app.config['CACHE_OPTIONS']:
                 cache_options.update(self.app.config['CACHE_OPTIONS'])
-                
-            cache_options.update(dict(default_timeout= \
-                                      self.app.config['CACHE_DEFAULT_TIMEOUT']))
-                        
-            if self.app.config['CACHE_TYPE'] == 'SimpleCache':
-                cache_options.update(dict(
-                    threshold=self.app.config['CACHE_THRESHOLD']))
-            elif self.app.config['CACHE_TYPE'] == 'MemcachedCache':
-                cache_args.append(self.app.config['CACHE_MEMCACHED_SERVERS'])
-                cache_options.update(dict(
-                    key_prefix=self.app.config['CACHE_KEY_PREFIX']))
-            elif self.app.config['CACHE_TYPE'] == 'GAEMemcachedCache':
-                cache_options.update(dict(
-                    key_prefix=self.app.config['CACHE_KEY_PREFIX']))
-            elif self.app.config['CACHE_TYPE'] == 'FileSystemCache':
-                cache_args.append(self.app.config['CACHE_DIR'])
-                cache_options.update(dict(
-                    threshold=self.app.config['CACHE_THRESHOLD']))
             
-            self.cache = cache_obj(*cache_args, **cache_options)
+            self.cache = cache_obj(self.app, cache_args, cache_options)
+            
+            if not isinstance(self.cache, BaseCache):
+                raise TypeError("Cache object must subclass "
+                                "werkzeug.contrib.cache.BaseCache")
 
     def cache_on(self, f):
         self._cache_on = f
@@ -179,7 +168,6 @@ class Cache(object):
         """
 
         def decorator(f):
-
             @wraps(f)
             def decorated_function(*args, **kwargs):
                 #: Bypass the cache entirely.
@@ -190,7 +178,7 @@ class Cache(object):
                     cache_key = key_prefix % request.path
                 else:
                     cache_key = key_prefix
-
+                
                 rv = self.cache.get(cache_key)
                 if rv is None:
                     rv = f(*args, **kwargs)
@@ -227,7 +215,6 @@ class Cache(object):
         """
 
         def memoize(f):
-
             @wraps(f)
             def decorated_function(*args, **kwargs):
                 cache_key = ('memoize', f.__name__, id(f), args, str(kwargs))
@@ -262,7 +249,7 @@ class Cache(object):
             >>> random_func()
             16
             
-        :param *keys: A list of function names to clear from cache.
+        :param \*keys: A list of function names to clear from cache.
         """
         def deletes(item):
             if item[0] == 'memoize' and item[1] in keys:
