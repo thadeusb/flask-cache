@@ -25,6 +25,7 @@ from types import NoneType
 from werkzeug import import_string
 from flask import request, current_app
 
+from .debug import log_debug_request
 
 logger = logging.getLogger(__name__)
 
@@ -127,30 +128,37 @@ class Cache(object):
         app = self.app or current_app
         return app.extensions['cache'][self]
 
+    @log_debug_request
     def get(self, *args, **kwargs):
         "Proxy function for internal cache object."
         return self.cache.get(*args, **kwargs)
 
+    @log_debug_request
     def set(self, *args, **kwargs):
         "Proxy function for internal cache object."
         self.cache.set(*args, **kwargs)
 
+    @log_debug_request
     def add(self, *args, **kwargs):
         "Proxy function for internal cache object."
         self.cache.add(*args, **kwargs)
 
+    @log_debug_request
     def delete(self, *args, **kwargs):
         "Proxy function for internal cache object."
         self.cache.delete(*args, **kwargs)
 
+    @log_debug_request
     def delete_many(self, *args, **kwargs):
         "Proxy function for internal cache object."
         self.cache.delete_many(*args, **kwargs)
 
+    @log_debug_request
     def get_many(self, *args, **kwargs):
         "Proxy function for internal cache object."
         return self.cache.get_many(*args, **kwargs)
 
+    @log_debug_request
     def set_many(self, *args, **kwargs):
         "Proxy function for internal cache object."
         self.cache.set_many(*args, **kwargs)
@@ -218,7 +226,7 @@ class Cache(object):
 
                 try:
                     cache_key = decorated_function.make_cache_key(*args, **kwargs)
-                    rv = self.cache.get(cache_key)
+                    rv = self.get(cache_key)
                 except Exception:
                     if current_app.debug:
                         raise
@@ -228,8 +236,8 @@ class Cache(object):
                 if rv is None:
                     rv = f(*args, **kwargs)
                     try:
-                        self.cache.set(cache_key, rv,
-                                   timeout=decorated_function.cache_timeout)
+                        self.set(cache_key, rv,
+                                 timeout=decorated_function.cache_timeout)
                     except Exception:
                         if current_app.debug:
                             raise
@@ -270,11 +278,11 @@ class Cache(object):
             fname = function_namespace(f, args)
 
             version_key = self._memvname(fname)
-            version_data = self.cache.get(version_key)
+            version_data = self.get(version_key)
 
             if version_data is None:
                 version_data = self.memoize_make_version_hash()
-                self.cache.set(version_key, version_data)
+                self.set(version_key, version_data)
 
             cache_key = hashlib.md5()
 
@@ -421,7 +429,7 @@ class Cache(object):
 
                 try:
                     cache_key = decorated_function.make_cache_key(f, *args, **kwargs)
-                    rv = self.cache.get(cache_key)
+                    rv = self.get(cache_key)
                 except Exception:
                     if current_app.debug:
                         raise
@@ -431,8 +439,8 @@ class Cache(object):
                 if rv is None:
                     rv = f(*args, **kwargs)
                     try:
-                        self.cache.set(cache_key, rv,
-                                   timeout=decorated_function.cache_timeout)
+                        self.set(cache_key, rv,
+                                 timeout=decorated_function.cache_timeout)
                     except Exception:
                         if current_app.debug:
                             raise
@@ -525,10 +533,10 @@ class Cache(object):
             if not args and not kwargs:
                 version_key = self._memvname(_fname)
                 version_data = self.memoize_make_version_hash()
-                self.cache.set(version_key, version_data)
+                self.set(version_key, version_data)
             else:
                 cache_key = f.make_cache_key(f.uncached, *args, **kwargs)
-                self.cache.delete(cache_key)
+                self.delete(cache_key)
         except Exception:
             if current_app.debug:
                 raise
@@ -554,7 +562,7 @@ class Cache(object):
 
         try:
             version_key = self._memvname(_fname)
-            self.cache.delete(version_key)
+            self.delete(version_key)
         except Exception:
             if current_app.debug:
                 raise

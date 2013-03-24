@@ -27,8 +27,12 @@ class CacheTestCase(unittest.TestCase):
         self.cache = Cache(app)
 
         self.app = app
+        self.ctx = self.app.test_request_context()
+        self.ctx.push()
 
     def tearDown(self):
+        self.ctx.pop()
+        self.ctx = None
         self.app = None
         self.cache = None
         self.tc = None
