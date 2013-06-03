@@ -24,7 +24,7 @@ setup(
     zip_safe=False,
     platforms='any',
     install_requires=[
-        'Flask'
+        'Flask >= 0.10'
     ],
     test_suite='test_cache',
     classifiers=[
